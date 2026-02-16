@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 # Approximate: 1 word ≈ 1.3 tokens for English text.
 MAX_CHUNK_WORDS = 180  # ≈ 230 tokens — safe margin under 256
-OVERLAP_SENTENCES = 1  # overlap across paragraph splits (within same section)
 
 # Regex: split on lines that start with ## or deeper headings
 _HEADING_RE = re.compile(r"^(#{2,6})\s+(.*)", re.MULTILINE)
@@ -49,7 +48,11 @@ def _make_chunk_id(doc_path: str, index: int) -> str:
 
 
 def _split_paragraphs_with_overlap(text: str, max_words: int) -> list[str]:
-    """Split text by paragraphs, merging small ones, with 1-sentence overlap."""
+    """Split text by paragraphs, accumulating until word limit, with 1-sentence overlap.
+    
+    Paragraphs are accumulated until adding the next one would exceed max_words.
+    When splitting, the last sentence of the previous chunk is carried over as overlap.
+    """
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
     if not paragraphs:
         return [text] if text.strip() else []
@@ -63,10 +66,12 @@ def _split_paragraphs_with_overlap(text: str, max_words: int) -> list[str]:
         if current_words + pw > max_words and current:
             chunk_text = "\n\n".join(current)
             chunks.append(chunk_text)
-            # Overlap: carry last sentence of previous chunk
-            sentences = current[-1].split(". ")
-            overlap = sentences[-1] if len(sentences) > 1 else ""
-            current = [overlap] if overlap else []
+            # Overlap: carry last sentence of previous chunk using robust sentence split
+            # Split on sentence boundaries (., !, ?) followed by whitespace
+            sentences = re.split(r'(?<=[.!?])\s+', current[-1])
+            # Always take at least the last sentence; if only one sentence, take the whole para
+            overlap = sentences[-1] if sentences else current[-1]
+            current = [overlap]
             current_words = _word_count(overlap)
         current.append(para)
         current_words += pw
@@ -172,7 +177,7 @@ def chunk_document(
         else:
             sub_texts = [section_text]
 
-        for sub_idx, text in enumerate(sub_texts):
+        for text in sub_texts:
             if not text.strip():
                 continue
 

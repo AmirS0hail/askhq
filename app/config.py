@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     knowledge_dir: str = "./knowledge"
 
     # ── Security ─────────────────────────────────────────────
-    reindex_token: str = "changeme-local-dev-token"
+    reindex_token: str
 
     @property
     def knowledge_path(self) -> Path:

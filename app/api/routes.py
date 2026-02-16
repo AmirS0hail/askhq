@@ -1,6 +1,7 @@
 """API routes: /health, /ask, /reindex."""
 
 import logging
+import secrets
 import time
 
 from fastapi import APIRouter, Header, HTTPException
@@ -91,8 +92,8 @@ async def reindex_knowledge_base(
     """
     settings = get_settings()
 
-    # Auth check
-    if x_reindex_token != settings.reindex_token:
+    # Auth check - use constant-time comparison to prevent timing attacks
+    if not secrets.compare_digest(x_reindex_token, settings.reindex_token):
         raise HTTPException(status_code=403, detail="Invalid reindex token")
 
     start = time.perf_counter()
@@ -122,7 +123,7 @@ async def reindex_knowledge_base(
     # Store (reset collection first)
     store = get_chroma_store()
     store.delete_collection()
-    store.add_chunks(chunks, embeddings)
+    chunks_created = store.add_chunks(chunks, embeddings)
 
     # Count unique documents
     doc_paths = {c.metadata.get("doc_path", "") for c in chunks}
@@ -131,13 +132,13 @@ async def reindex_knowledge_base(
     logger.info(
         "Reindex complete: %d docs → %d chunks in %.1fs",
         len(doc_paths),
-        len(chunks),
+        chunks_created,
         elapsed,
     )
 
     return ReindexResponse(
         status="success",
         documents_processed=len(doc_paths),
-        chunks_created=len(chunks),
+        chunks_created=chunks_created,
         duration_s=round(elapsed, 2),
     )
