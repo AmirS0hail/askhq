@@ -101,9 +101,13 @@ class ChromaStore:
         Returns:
             List of dicts with keys: id, text, metadata, similarity.
         """
+        collection_size = self._collection.count()
+        if collection_size == 0:
+            return []
+
         results = self._collection.query(
             query_embeddings=[query_embedding.tolist()],
-            n_results=min(top_k, self._collection.count() or 1),
+            n_results=min(top_k, collection_size),
             include=["documents", "metadatas", "distances"],
         )
 

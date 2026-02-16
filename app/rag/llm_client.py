@@ -4,6 +4,7 @@ Calls the local Ollama /api/generate endpoint with retry logic and
 configurable timeouts. Returns generated text or raises descriptive errors.
 """
 
+import asyncio
 import logging
 import time
 
@@ -111,7 +112,7 @@ async def generate(prompt: str) -> str:
         if attempt < MAX_RETRIES:
             backoff = RETRY_BACKOFF * (2**attempt)
             logger.info("Retrying in %.1fs...", backoff)
-            time.sleep(backoff)  # blocking sleep OK for retry backoff
+            await asyncio.sleep(backoff)
 
     raise OllamaError(
         f"Ollama unavailable after {MAX_RETRIES + 1} attempts: {last_error}"
