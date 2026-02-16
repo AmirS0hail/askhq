@@ -69,8 +69,8 @@ def _split_paragraphs_with_overlap(text: str, max_words: int) -> list[str]:
             # Overlap: carry last sentence of previous chunk using robust sentence split
             # Split on sentence boundaries (., !, ?) followed by whitespace
             sentences = re.split(r'(?<=[.!?])\s+', current[-1])
-            # Always take at least the last sentence; if only one sentence, take the whole para
-            overlap = sentences[-1] if sentences else current[-1]
+            # Always take the last sentence (re.split always returns at least one element)
+            overlap = sentences[-1]
             current = [overlap]
             current_words = _word_count(overlap)
         current.append(para)
