@@ -1,0 +1,3 @@
+# This directory contains runtime data (gitignored).
+# - chroma/       Persistent vector database
+# - chunks.jsonl  Debug output from chunking

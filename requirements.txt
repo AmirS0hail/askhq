@@ -1,0 +1,16 @@
+# Web framework
+fastapi==0.129.0
+uvicorn[standard]==0.40.0
+pydantic==2.12.5
+pydantic-settings==2.13.0
+
+# RAG stack
+chromadb==1.5.0
+sentence-transformers==5.2.2
+httpx==0.28.1
+
+# Markdown processing
+python-frontmatter==1.1.0
+
+# Utilities
+python-dotenv==1.2.1
