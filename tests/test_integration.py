@@ -30,7 +30,7 @@ def test_health_endpoint_returns_200():
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
-    assert data["ollama_connected"] is True
+    assert data["llm_connected"] is True
     assert data["chroma_docs"] == 42
 
 
@@ -47,7 +47,7 @@ def test_health_degraded_when_ollama_down():
 
     assert response.status_code == 200
     assert response.json()["status"] == "degraded"
-    assert response.json()["ollama_connected"] is False
+    assert response.json()["llm_connected"] is False
 
 
 # ── POST /ask ────────────────────────────────────────────────

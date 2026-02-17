@@ -222,11 +222,15 @@ class TestHuggingFaceProvider:
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client.post = AsyncMock(side_effect=[loading_response, success_response])
 
-        with patch("app.rag.providers.huggingface.httpx.AsyncClient", return_value=mock_client):
+        mock_sleep = AsyncMock()
+
+        with patch("app.rag.providers.huggingface.httpx.AsyncClient", return_value=mock_client), \
+             patch("app.rag.providers.huggingface.asyncio.sleep", mock_sleep):
             result = await provider.generate("test prompt")
 
         assert result == "Answer after cold start."
         assert mock_client.post.call_count == 2
+        mock_sleep.assert_awaited_once_with(0.1)
 
     @pytest.mark.asyncio
     async def test_generate_invalid_api_key_raises(self, provider):
