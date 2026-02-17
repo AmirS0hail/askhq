@@ -8,8 +8,7 @@ import logging
 import time
 from typing import Any
 
-from app.rag import llm_client
-from app.rag.llm_client import OllamaError
+from app.rag.llm_provider import LLMError, get_llm_provider
 from app.rag.retriever import RetrievedChunk, retrieve
 
 logger = logging.getLogger(__name__)
@@ -113,11 +112,12 @@ async def answer_question(
     context = _format_context(chunks)
     prompt = SYSTEM_PROMPT.format(context=context, question=question)
 
-    # Step 4: Call LLM (with fallback if Ollama is down)
+    # Step 4: Call LLM (with fallback if provider is down)
     try:
-        answer = await llm_client.generate(prompt)
-    except OllamaError as e:
-        logger.warning("Ollama unavailable, returning raw excerpts: %s", e)
+        provider = get_llm_provider()
+        answer = await provider.generate(prompt)
+    except LLMError as e:
+        logger.warning("LLM unavailable, returning raw excerpts: %s", e)
         # Graceful degradation: return raw chunk content
         excerpts = "\n\n".join(
             f"• **{c.metadata.get('section', 'Policy')}**: {c.text[:300]}"
