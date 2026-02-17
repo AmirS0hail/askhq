@@ -1,0 +1,27 @@
+# Render Blueprint — one-click deploy for AskHQ
+# https://docs.render.com/infrastructure-as-code
+
+services:
+  - type: web
+    name: askhq
+    runtime: docker
+    plan: free
+    region: oregon
+
+    # Health check
+    healthCheckPath: /health
+
+    # Env vars (non-secret defaults — set HF_API_KEY in Render dashboard)
+    envVars:
+      - key: LLM_PROVIDER
+        value: huggingface
+      - key: HF_MODEL_ID
+        value: meta-llama/Llama-3.2-3B-Instruct
+      - key: HF_TIMEOUT
+        value: "120"
+      - key: REINDEX_TOKEN
+        generateValue: true   # Render generates a random secret
+      - key: HF_API_KEY
+        sync: false           # Must be set manually in dashboard
+      - key: LOG_LEVEL
+        value: INFO
