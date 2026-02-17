@@ -4,6 +4,8 @@ Calls the public HF Inference API for text generation.
 Handles 503 cold-start retries (model loading) automatically.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import time

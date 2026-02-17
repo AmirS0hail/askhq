@@ -4,6 +4,8 @@ Calls the local Ollama /api/generate endpoint with retry logic and
 configurable timeouts. Extracted from the original llm_client module.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import time
@@ -17,6 +19,7 @@ logger = logging.getLogger(__name__)
 MAX_RETRIES = 2
 RETRY_BACKOFF = 1.0  # seconds, doubled each retry
 
+# asdasd
 
 class OllamaProvider:
     """LLM provider backed by a local Ollama server."""
