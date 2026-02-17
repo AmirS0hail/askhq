@@ -1,7 +1,11 @@
 """Hugging Face Inference API provider.
 
-Calls the public HF Inference API for text generation.
+Uses the HF router's OpenAI-compatible chat completions endpoint.
 Handles 503 cold-start retries (model loading) automatically.
+
+As of early 2026, HF migrated from api-inference.huggingface.co to
+router.huggingface.co with an OpenAI-compatible /v1/chat/completions
+format. The old ``inputs`` text-generation endpoint is 410 Gone.
 """
 
 from __future__ import annotations
@@ -16,17 +20,17 @@ from app.rag.llm_provider import LLMError
 
 logger = logging.getLogger(__name__)
 
-HF_API_BASE = "https://api-inference.huggingface.co/models"
+HF_API_BASE = "https://router.huggingface.co"
 MAX_COLD_START_WAIT = 30  # seconds cap for 503 retry
 
 
 class HuggingFaceProvider:
-    """LLM provider backed by Hugging Face Inference API."""
+    """LLM provider backed by Hugging Face Inference API (chat completions)."""
 
     def __init__(
         self,
         api_key: str,
-        model_id: str = "mistralai/Mistral-7B-Instruct-v0.2",
+        model_id: str = "meta-llama/Llama-3.2-3B-Instruct",
         timeout: int = 120,
         temperature: float = 0.1,
     ) -> None:
@@ -34,10 +38,17 @@ class HuggingFaceProvider:
         self.model_id = model_id
         self.timeout = timeout
         self.temperature = temperature
-        self.endpoint = f"{HF_API_BASE}/{model_id}"
+        self.chat_endpoint = f"{HF_API_BASE}/v1/chat/completions"
+        self.health_endpoint = (
+            f"https://huggingface.co/api/models/{self.model_id}"
+        )
 
     async def generate(self, prompt: str) -> str:
-        """Send prompt to HF Inference API and return generated text.
+        """Send prompt to HF chat completions API and return generated text.
+
+        Uses the OpenAI-compatible format: the full prompt (system + context
+        + question) is sent as a single user message. The model responds in
+        the ``choices[0].message.content`` field.
 
         Retries once on HTTP 503 (model loading / cold start), using
         the ``estimated_time`` from the response body if available.
@@ -50,12 +61,12 @@ class HuggingFaceProvider:
             "Content-Type": "application/json",
         }
         payload = {
-            "inputs": prompt,
-            "parameters": {
-                "temperature": self.temperature,
-                "max_new_tokens": 512,
-                "return_full_text": False,
-            },
+            "model": self.model_id,
+            "messages": [
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": self.temperature,
+            "max_tokens": 512,
         }
 
         last_error: Exception | None = None
@@ -72,18 +83,21 @@ class HuggingFaceProvider:
                     )
                 ) as client:
                     response = await client.post(
-                        self.endpoint, json=payload, headers=headers
+                        self.chat_endpoint, json=payload, headers=headers
                     )
 
                 elapsed = time.perf_counter() - start
 
                 # 503 = model loading (cold start on free tier)
                 if response.status_code == 503 and attempt == 0:
-                    body = response.json()
-                    wait_time = min(
-                        body.get("estimated_time", 20),
-                        MAX_COLD_START_WAIT,
-                    )
+                    try:
+                        body = response.json()
+                        wait_time = min(
+                            body.get("estimated_time", 20),
+                            MAX_COLD_START_WAIT,
+                        )
+                    except Exception:
+                        wait_time = 20
                     logger.warning(
                         "HuggingFace model loading, retrying in %.0fs...",
                         wait_time,
@@ -102,8 +116,8 @@ class HuggingFaceProvider:
                         f"HuggingFace model '{self.model_id}' not found."
                     )
 
-                if response.status_code != 200:
-                    error_text = response.text[:200]
+                if response.status_code not in (200, 201):
+                    error_text = response.text[:300]
                     raise LLMError(
                         f"HuggingFace API error {response.status_code}: "
                         f"{error_text}"
@@ -111,23 +125,32 @@ class HuggingFaceProvider:
 
                 data = response.json()
 
-                # HF returns [{"generated_text": "..."}] for text-generation
-                if isinstance(data, list) and len(data) > 0:
-                    answer = data[0].get("generated_text", "").strip()
-                elif isinstance(data, dict):
-                    answer = data.get("generated_text", "").strip()
-                else:
-                    raise LLMError(
-                        f"Unexpected HuggingFace response format: {type(data)}"
+                # OpenAI-compatible: {"choices": [{"message": {"content": "..."}}]}
+                try:
+                    answer = (
+                        data["choices"][0]["message"]["content"].strip()
                     )
+                except (KeyError, IndexError, TypeError):
+                    # Fallback: try old text-generation format
+                    if isinstance(data, list) and len(data) > 0:
+                        answer = data[0].get("generated_text", "").strip()
+                    elif isinstance(data, dict):
+                        answer = data.get("generated_text", "").strip()
+                    else:
+                        raise LLMError(
+                            f"Unexpected HuggingFace response format: "
+                            f"{str(data)[:200]}"
+                        )
 
                 if not answer:
                     raise LLMError("HuggingFace returned empty response")
 
+                usage = data.get("usage", {}) if isinstance(data, dict) else {}
+                tokens = usage.get("completion_tokens", "?")
                 logger.info(
-                    "HuggingFace response: model=%s chars=%d latency=%.1fs",
+                    "HuggingFace response: model=%s tokens=%s latency=%.1fs",
                     self.model_id,
-                    len(answer),
+                    tokens,
                     elapsed,
                 )
                 return answer
@@ -152,17 +175,19 @@ class HuggingFaceProvider:
         )
 
     async def check_health(self) -> bool:
-        """Check if HF Inference API is reachable for this model.
+        """Check if HF Inference API is reachable.
+
+        Pings the HF Hub model info endpoint to confirm the model exists
+        and the API key is valid.
 
         Returns:
-            True if the model endpoint responds (200 or 503 loading),
+            True if the model info endpoint responds 200,
             False on connection failure or auth error.
         """
         headers = {"Authorization": f"Bearer {self.api_key}"}
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                r = await client.get(self.endpoint, headers=headers)
-                # 200 = ready, 503 = loading (still reachable)
-                return r.status_code in (200, 503)
+                r = await client.get(self.health_endpoint, headers=headers)
+                return r.status_code == 200
         except Exception:
             return False

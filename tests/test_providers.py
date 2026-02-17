@@ -154,18 +154,26 @@ class TestHuggingFaceProvider:
     def provider(self):
         return HuggingFaceProvider(
             api_key="hf_test_key",
-            model_id="mistralai/Mistral-7B-Instruct-v0.2",
+            model_id="meta-llama/Llama-3.2-3B-Instruct",
             timeout=120,
             temperature=0.1,
         )
+
+    @staticmethod
+    def _chat_response(text):
+        """Build a mock OpenAI-compatible chat completions response."""
+        return {
+            "choices": [{"message": {"content": text}}],
+            "usage": {"completion_tokens": 15},
+        }
 
     @pytest.mark.asyncio
     async def test_generate_success(self, provider):
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = [
-            {"generated_text": "You get 3 casual leave days per year."}
-        ]
+        mock_response.json.return_value = self._chat_response(
+            "You get 3 casual leave days per year."
+        )
 
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -178,13 +186,13 @@ class TestHuggingFaceProvider:
         assert result == "You get 3 casual leave days per year."
 
     @pytest.mark.asyncio
-    async def test_generate_dict_response_format(self, provider):
-        """HF sometimes returns a dict instead of a list."""
+    async def test_generate_legacy_list_format(self, provider):
+        """Fallback: handle old [{'generated_text': ...}] format."""
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "generated_text": "Answer from dict format."
-        }
+        mock_response.json.return_value = [
+            {"generated_text": "Answer from legacy format."}
+        ]
 
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -194,7 +202,7 @@ class TestHuggingFaceProvider:
         with patch("app.rag.providers.huggingface.httpx.AsyncClient", return_value=mock_client):
             result = await provider.generate("test prompt")
 
-        assert result == "Answer from dict format."
+        assert result == "Answer from legacy format."
 
     @pytest.mark.asyncio
     async def test_generate_retries_on_503(self, provider):
@@ -205,9 +213,9 @@ class TestHuggingFaceProvider:
 
         success_response = MagicMock()
         success_response.status_code = 200
-        success_response.json.return_value = [
-            {"generated_text": "Answer after cold start."}
-        ]
+        success_response.json.return_value = self._chat_response(
+            "Answer after cold start."
+        )
 
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -262,8 +270,8 @@ class TestHuggingFaceProvider:
             assert await provider.check_health() is True
 
     @pytest.mark.asyncio
-    async def test_check_health_true_on_503_loading(self, provider):
-        """503 during health check means model is loading — still reachable."""
+    async def test_check_health_false_on_503(self, provider):
+        """503 during health check means service has issues."""
         mock_response = MagicMock()
         mock_response.status_code = 503
 
@@ -273,7 +281,7 @@ class TestHuggingFaceProvider:
         mock_client.get = AsyncMock(return_value=mock_response)
 
         with patch("app.rag.providers.huggingface.httpx.AsyncClient", return_value=mock_client):
-            assert await provider.check_health() is True
+            assert await provider.check_health() is False
 
     @pytest.mark.asyncio
     async def test_check_health_false_on_connection_error(self, provider):

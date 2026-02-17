@@ -36,7 +36,7 @@ class Settings(BaseSettings):
 
     # ── Hugging Face Inference API (cloud) ───────────────────
     hf_api_key: str = ""
-    hf_model_id: str = "mistralai/Mistral-7B-Instruct-v0.2"
+    hf_model_id: str = "meta-llama/Llama-3.2-3B-Instruct"
     hf_timeout: int = 120
 
     # ── Vector DB ────────────────────────────────────────────
