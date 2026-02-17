@@ -32,7 +32,7 @@ router = APIRouter()
 async def health_check() -> HealthResponse:
     """System health: checks LLM provider connectivity and Chroma doc count."""
     provider = get_llm_provider()
-    ollama_ok = await provider.check_health()
+    llm_ok = await provider.check_health()
 
     try:
         store = get_chroma_store()
@@ -40,11 +40,11 @@ async def health_check() -> HealthResponse:
     except Exception:
         doc_count = 0
 
-    status = "healthy" if ollama_ok and doc_count > 0 else "degraded"
+    status = "healthy" if llm_ok and doc_count > 0 else "degraded"
 
     return HealthResponse(
         status=status,
-        ollama_connected=ollama_ok,
+        llm_connected=llm_ok,
         chroma_docs=doc_count,
     )
 
