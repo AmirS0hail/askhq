@@ -17,8 +17,11 @@ client = TestClient(app)
 
 def test_health_endpoint_returns_200():
     """Health endpoint should always return 200 (even if degraded)."""
+    mock_provider = AsyncMock()
+    mock_provider.check_health.return_value = True
+
     with (
-        patch("app.api.routes.llm_client.check_health", new_callable=AsyncMock, return_value=True),
+        patch("app.api.routes.get_llm_provider", return_value=mock_provider),
         patch("app.api.routes.get_chroma_store") as mock_store,
     ):
         mock_store.return_value.count.return_value = 42
@@ -32,8 +35,11 @@ def test_health_endpoint_returns_200():
 
 
 def test_health_degraded_when_ollama_down():
+    mock_provider = AsyncMock()
+    mock_provider.check_health.return_value = False
+
     with (
-        patch("app.api.routes.llm_client.check_health", new_callable=AsyncMock, return_value=False),
+        patch("app.api.routes.get_llm_provider", return_value=mock_provider),
         patch("app.api.routes.get_chroma_store") as mock_store,
     ):
         mock_store.return_value.count.return_value = 10

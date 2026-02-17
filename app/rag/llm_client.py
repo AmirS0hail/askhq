@@ -1,134 +1,27 @@
-"""Ollama LLM HTTP client.
+"""LLM client — backward-compatible shim.
 
-Calls the local Ollama /api/generate endpoint with retry logic and
-configurable timeouts. Returns generated text or raises descriptive errors.
+Delegates to the active LLM provider (Ollama or HuggingFace) selected
+via the LLM_PROVIDER environment variable. Preserves the old module-level
+``generate()`` and ``check_health()`` functions so existing imports keep
+working during the transition.
+
+New code should import from ``app.rag.llm_provider`` directly.
 """
 
-import asyncio
-import logging
-import time
+from app.rag.llm_provider import LLMError, get_llm_provider
 
-import httpx
-
-from app.config import get_settings
-
-logger = logging.getLogger(__name__)
-
-# Retry config
-MAX_RETRIES = 2
-RETRY_BACKOFF = 1.0  # seconds, doubled each retry
-
-
-class OllamaError(Exception):
-    """Raised when Ollama call fails after retries."""
+# Backward-compatible alias — old code catches OllamaError
+OllamaError = LLMError
 
 
 async def generate(prompt: str) -> str:
-    """Call Ollama /api/generate and return the full response text.
-
-    Uses non-streaming mode for simplicity. Retries on transient failures.
-
-    Args:
-        prompt: Full prompt string (system + context + question).
-
-    Returns:
-        Generated text from the model.
-
-    Raises:
-        OllamaError: If all retries are exhausted or model is not found.
-    """
-    settings = get_settings()
-    url = f"{settings.ollama_url}/api/generate"
-    payload = {
-        "model": settings.ollama_model,
-        "prompt": prompt,
-        "stream": False,
-        "options": {
-            "temperature": settings.temperature,
-            "top_p": 0.9,
-        },
-    }
-
-    last_error: Exception | None = None
-
-    for attempt in range(MAX_RETRIES + 1):
-        try:
-            start = time.perf_counter()
-            async with httpx.AsyncClient(timeout=httpx.Timeout(
-                connect=5.0,
-                read=float(settings.ollama_timeout),
-                write=5.0,
-                pool=5.0,
-            )) as client:
-                response = await client.post(url, json=payload)
-
-            elapsed = time.perf_counter() - start
-
-            if response.status_code == 404:
-                raise OllamaError(
-                    f"Model '{settings.ollama_model}' not found. "
-                    f"Run: ollama pull {settings.ollama_model}"
-                )
-
-            response.raise_for_status()
-
-            data = response.json()
-            answer = data.get("response", "").strip()
-            logger.info(
-                "Ollama response: model=%s tokens=%s latency=%.1fs",
-                settings.ollama_model,
-                data.get("eval_count", "?"),
-                elapsed,
-            )
-            return answer
-
-        except OllamaError:
-            raise  # don't retry model-not-found
-        except httpx.ConnectError as e:
-            last_error = e
-            logger.warning(
-                "Ollama connection failed (attempt %d/%d): %s",
-                attempt + 1,
-                MAX_RETRIES + 1,
-                e,
-            )
-        except httpx.ReadTimeout as e:
-            last_error = e
-            logger.warning(
-                "Ollama read timeout after %ds (attempt %d/%d)",
-                settings.ollama_timeout,
-                attempt + 1,
-                MAX_RETRIES + 1,
-            )
-        except Exception as e:
-            last_error = e
-            logger.warning(
-                "Ollama unexpected error (attempt %d/%d): %s",
-                attempt + 1,
-                MAX_RETRIES + 1,
-                e,
-            )
-
-        if attempt < MAX_RETRIES:
-            backoff = RETRY_BACKOFF * (2**attempt)
-            logger.info("Retrying in %.1fs...", backoff)
-            await asyncio.sleep(backoff)
-
-    raise OllamaError(
-        f"Ollama unavailable after {MAX_RETRIES + 1} attempts: {last_error}"
-    )
+    """Delegate to the active provider's generate method."""
+    provider = get_llm_provider()
+    return await provider.generate(prompt)
 
 
 async def check_health() -> bool:
-    """Check if Ollama is reachable.
+    """Delegate to the active provider's check_health method."""
+    provider = get_llm_provider()
+    return await provider.check_health()
 
-    Returns:
-        True if Ollama /api/tags responds with 200, False otherwise.
-    """
-    settings = get_settings()
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            r = await client.get(f"{settings.ollama_url}/api/tags")
-            return r.status_code == 200
-    except Exception:
-        return False
