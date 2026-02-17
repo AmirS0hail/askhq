@@ -1,0 +1,30 @@
+# Version control
+.git
+.gitignore
+
+# Virtual environment
+.venv
+
+# Chroma persistent data (rebuilt on boot)
+data/
+
+# Caches
+__pycache__
+.pytest_cache
+.ruff_cache
+*.pyc
+
+# IDE
+.vscode
+.idea
+
+# Local env (secrets set in Render dashboard)
+.env
+
+# Dev files
+*.md
+!knowledge/**/*.md
+requirements-dev.txt
+tests/
+.python-version
+pytest.ini
