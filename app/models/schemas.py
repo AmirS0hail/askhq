@@ -58,7 +58,7 @@ class HealthResponse(BaseModel):
     """GET /health response body."""
 
     status: str
-    ollama_connected: bool
+    llm_connected: bool
     chroma_docs: int
     version: str = "0.1.0"
 

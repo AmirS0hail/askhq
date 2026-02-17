@@ -25,11 +25,19 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
 
-    # ── Ollama LLM ───────────────────────────────────────────
+    # ── LLM Provider ─────────────────────────────────────────
+    llm_provider: str = "ollama"  # "ollama" | "huggingface"
+
+    # ── Ollama (local) ───────────────────────────────────────
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.1:8b"
     ollama_timeout: int = 60
     temperature: float = 0.1
+
+    # ── Hugging Face Inference API (cloud) ───────────────────
+    hf_api_key: str = ""
+    hf_model_id: str = "meta-llama/Llama-3.2-3B-Instruct"
+    hf_timeout: int = 120
 
     # ── Vector DB ────────────────────────────────────────────
     chroma_dir: str = "./data/chroma"

@@ -14,8 +14,9 @@ from app.models.schemas import (
     ReindexResponse,
     Source,
 )
-from app.rag import llm_client, rag_service
+from app.rag import rag_service
 from app.rag.chunker import chunk_all_documents
+from app.rag.llm_provider import get_llm_provider
 from app.rag.embedder import get_embedding_service
 from app.rag.vectorstore import get_chroma_store
 
@@ -29,8 +30,9 @@ router = APIRouter()
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check() -> HealthResponse:
-    """System health: checks Ollama connectivity and Chroma doc count."""
-    ollama_ok = await llm_client.check_health()
+    """System health: checks LLM provider connectivity and Chroma doc count."""
+    provider = get_llm_provider()
+    llm_ok = await provider.check_health()
 
     try:
         store = get_chroma_store()
@@ -38,11 +40,11 @@ async def health_check() -> HealthResponse:
     except Exception:
         doc_count = 0
 
-    status = "healthy" if ollama_ok and doc_count > 0 else "degraded"
+    status = "healthy" if llm_ok and doc_count > 0 else "degraded"
 
     return HealthResponse(
         status=status,
-        ollama_connected=ollama_ok,
+        llm_connected=llm_ok,
         chroma_docs=doc_count,
     )
 
